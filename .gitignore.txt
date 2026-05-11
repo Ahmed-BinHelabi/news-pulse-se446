@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+data/incoming/*.json
+
+.sparkStaging/
+metastore_db/
+
+.DS_Store
+
+.env
