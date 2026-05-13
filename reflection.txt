@@ -1,0 +1,3 @@
+Scaling Reflection — News Pulse
+
+The LLM summary step would break first at 1000× volume. Currently, we call the API synchronously on each dashboard refresh, blocking all other operations. At scale, the keyword list grows and API latency compounds. To fix this, we'd use Spark's map() transformation with partition-level parallelism, batching 15-keyword groups into parallel API calls rather than waiting for each sequentially. Additionally, we'd cache hot keywords with RDD caching (spark.cache()) and switch to append-only output mode with a sliding window to drop stale state, preventing unbounded memory growth in the aggregation state.
