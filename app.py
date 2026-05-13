@@ -1,58 +1,77 @@
 import streamlit as st
-from pyspark.sql import SparkSession
-from llm import generate_summary
+import pandas as pd
+import json
+import os
 
-spark = (
-    SparkSession.builder
-    .appName("NewsPulseDashboard")
-    .getOrCreate()
-)
+st.set_page_config(page_title="News Pulse", layout="wide")
+st.title("📰 News Pulse — Live")
 
-st.title("News Pulse Live Dashboard")
+def load_agg():
+    if os.path.exists("aggregations.json"):
+        try:
+            with open("aggregations.json") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
 
-# ----------------------------
-# Source chart
-# ----------------------------
+agg = load_agg()
+by_src = agg.get("by_source", {})
+by_win = agg.get("by_window", {})
+top_w = agg.get("top_words", {})
 
-src_df = spark.sql("""
-SELECT * FROM by_source
-""").toPandas()
+col1, col2 = st.columns(2)
 
-st.subheader("Headlines by Source")
-st.bar_chart(src_df.set_index("source"))
+with col1:
+    st.subheader("📊 By Source")
+    if by_src:
+        df = pd.DataFrame(list(by_src.items()), columns=["source", "count"])
+        st.bar_chart(df.set_index("source"))
+    else:
+        st.info("Loading...")
 
-# ----------------------------
-# Window chart
-# ----------------------------
+with col2:
+    st.subheader("📈 By Hour")
+    if by_win:
+        df = pd.DataFrame(list(by_win.items()), columns=["hour", "count"])
+        st.line_chart(df.set_index("hour"))
+    else:
+        st.info("Loading...")
 
-window_df = spark.sql("""
-SELECT window.start as time, count
-FROM by_window
-ORDER BY time
-""").toPandas()
+st.subheader("🔤 Top Keywords")
+if top_w:
+    df = pd.DataFrame(list(top_w.items()), columns=["word", "count"])
+    st.dataframe(df.head(10))
+else:
+    st.info("Loading...")
 
-st.subheader("Headline Volume Over Time")
-st.line_chart(window_df.set_index("time"))
+st.divider()
+st.subheader("✨ AI Summary")
 
-# ----------------------------
-# Top words
-# ----------------------------
+def get_summary(top_w):
+    import anthropic
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key or not top_w:
+        return None
+    
+    keywords_str = ", ".join([w[0] for w in sorted(top_w.items(), key=lambda x: x[1], reverse=True)[:15]])
+    
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=150,
+            messages=[{"role": "user", "content": f"News keywords: {keywords_str}\n\nWrite ONE paragraph (max 80 words) on main topics. Must mention 3+ storylines. Factual and concise."}]
+        )
+        return msg.content[0].text
+    except:
+        return f"Keywords: {keywords_str}"
 
-words_df = spark.sql("""
-SELECT * FROM top_words
-LIMIT 10
-""").toPandas()
+if top_w:
+    summary = get_summary(top_w)
+    if summary:
+        st.markdown(summary)
+else:
+    st.info("Waiting for keywords...")
 
-st.subheader("Top Keywords")
-st.table(words_df)
-
-# ----------------------------
-# LLM Summary
-# ----------------------------
-
-keywords = words_df["word"].tolist()
-
-summary = generate_summary(keywords)
-
-st.subheader("AI News Summary")
-st.write(summary)
+st.button("🔄 Refresh")
