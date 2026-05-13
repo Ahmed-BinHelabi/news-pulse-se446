@@ -1,0 +1,8 @@
+.env.local
+.env
+__pycache__/
+*.pyc
+*.pyo
+data/incoming/
+checkpoint/
+metastore_db/
